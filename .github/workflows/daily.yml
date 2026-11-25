@@ -1,0 +1,21 @@
+# Daily: build the index and upload it to Cloudflare R2 (shortlink-files/fl/routes-index.tsv.gz).
+# 每天建一次索引並上傳 R2。需要 repo secret CLOUDFLARE_API_TOKEN（R2 寫入）；沒設就只建不傳。
+name: daily
+on:
+  schedule:
+    - cron: '20 19 * * *'   # 03:20 Asia/Taipei
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node build.mjs routes-index.tsv.gz
+      - name: upload to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: npx -y wrangler@4 r2 object put shortlink-files/fl/routes-index.tsv.gz --file routes-index.tsv.gz --content-type application/gzip --remote
