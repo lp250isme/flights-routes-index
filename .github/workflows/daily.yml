@@ -1,10 +1,10 @@
-# Hourly: build the index and upload it only when it changed to Cloudflare R2 (shortlink-files/fl/routes-index.tsv.gz).
-# 每小時建一次索引，跟線上那份不一樣才上傳 R2。需要 repo secret CLOUDFLARE_API_TOKEN（R2 寫入）；沒設就只建不傳。
+# Every 3 hours: build the index and upload it only when it changed to Cloudflare R2 (shortlink-files/fl/routes-index.tsv.gz).
+# 每 3 小時建一次索引，跟線上那份不一樣才上傳 R2。需要 repo secret CLOUDFLARE_API_TOKEN（R2 寫入）；沒設就只建不傳。
 # 選用 TDX_CLIENT_ID／TDX_CLIENT_SECRET：台灣班號標出飛哪幾天（TDX 定期航班表）。
 name: daily
 on:
   schedule:
-    - cron: '17 * * * *'   # 每小時：VRS、TDX 有變才上傳
+    - cron: '17 */3 * * *'   # 每 3 小時：VRS、TDX 有變才上傳
   workflow_dispatch:
 jobs:
   build:
