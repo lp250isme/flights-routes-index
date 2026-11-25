@@ -37,7 +37,7 @@ const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
  * TDX 定期航班表（GeneralSchedule International＋Domestic）→ 班號 → 接下來 DAYS_AHEAD 天實際有排班的星期（"1246"，1＝週一…7＝週日）。
  * 一天一天看：那天落在某筆班表的有效期間、而且那筆的星期有勾，才算那天有飛（換季前後的班表不會互相蓋過）。
  */
-export const DAYS_AHEAD = 14;
+export const DAYS_AHEAD = 7;   // 一週：每個星期幾剛好對到一個實際日期（14 天會把下個月的班表混進來）
 export function scheduleDays(schedules, today = new Date().toISOString().slice(0, 10)) {
   const dates = Array.from({ length: DAYS_AHEAD }, (_, i) => new Date(Date.parse(today) + i * 86400e3));
   const days = new Map(), routes = new Map();

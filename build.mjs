@@ -34,4 +34,11 @@ if (stats.kept < 100000) throw new Error(`too few routes (${stats.kept}), not up
 const gz = gzipSync(Buffer.from(text), { level: 9 });
 const out = process.argv[2] || 'routes-index.tsv.gz';
 writeFileSync(out, gz);
-console.log(JSON.stringify({ ...stats, textBytes: Buffer.byteLength(text), gzBytes: gz.length, out }));
+// 跟線上那份比（不看第一行日期）：一樣就不用上傳，ETag 不變、App 也不會重新下載
+let changed = true;
+try {
+  const live = gunzipSync(Buffer.from(await (await fetch('https://go.kvcc.me/flights/routes-index')).arrayBuffer())).toString('utf8');
+  changed = live.slice(live.indexOf('\n')) !== text.slice(text.indexOf('\n'));
+} catch { /* 線上還沒有或抓不到：照樣上傳 */ }
+if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `changed=${changed}\n`, { flag: 'a' });
+console.log(JSON.stringify({ changed, ...stats, textBytes: Buffer.byteLength(text), gzBytes: gz.length, out }));
