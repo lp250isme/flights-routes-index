@@ -34,22 +34,25 @@ export const TW_AIRPORTS = new Set(['TPE', 'TSA', 'KHH', 'RMQ', 'TNN', 'CYI', 'H
 const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 /**
- * TDX 定期航班表（GeneralSchedule International＋Domestic）→ 班號 → 飛的星期（"1246"，1＝週一…7＝週日）。
- * 只算「今天到 60 天後」有效的班表；同一班號多筆（換季、不同航段）取聯集。
+ * TDX 定期航班表（GeneralSchedule International＋Domestic）→ 班號 → 接下來 DAYS_AHEAD 天實際有排班的星期（"1246"，1＝週一…7＝週日）。
+ * 一天一天看：那天落在某筆班表的有效期間、而且那筆的星期有勾，才算那天有飛（換季前後的班表不會互相蓋過）。
  */
+export const DAYS_AHEAD = 14;
 export function scheduleDays(schedules, today = new Date().toISOString().slice(0, 10)) {
-  const until = new Date(Date.parse(today) + 60 * 86400e3).toISOString().slice(0, 10);
+  const dates = Array.from({ length: DAYS_AHEAD }, (_, i) => new Date(Date.parse(today) + i * 86400e3));
   const days = new Map(), routes = new Map();
   for (const s of schedules || []) {
     const air = String(s.AirlineID || '').toUpperCase().trim();
     let num = String(s.FlightNumber || '').toUpperCase().trim();
     if (num.startsWith(air)) num = num.slice(air.length);
     if (!air || !num) continue;
-    const start = String(s.ScheduleStartDate || '').slice(0, 10), end = String(s.ScheduleEndDate || '9999').slice(0, 10);
-    if (end < today || (start && start > until)) continue;
     const flight = air + num.replace(/^0+(?=\d)/, '');
+    const start = String(s.ScheduleStartDate || '0000').slice(0, 10), end = String(s.ScheduleEndDate || '9999').slice(0, 10);
     const set = days.get(flight) || new Set();
-    WEEK.forEach((d, i) => { if (s[d] === true || s[d] === 'true' || s[d] === 1) set.add(i + 1); });
+    for (const d of dates) {
+      const iso = d.toISOString().slice(0, 10), wd = (d.getUTCDay() + 6) % 7;   // 0＝週一
+      if (iso >= start && iso <= end && (s[WEEK[wd]] === true || s[WEEK[wd]] === 'true')) set.add(wd + 1);
+    }
     days.set(flight, set);
     const dep = String(s.DepartureAirportID || '').toUpperCase(), arr = String(s.ArrivalAirportID || '').toUpperCase();
     if (dep && arr && !routes.has(flight)) routes.set(flight, `${dep}-${arr}`);
@@ -102,7 +105,7 @@ export function buildRoutesIndex({ routesCsv, airlinesCsv, airportsCsv, schedule
     for (let i = 0; i < out.length; i++) {
       const [f, route] = out[i].split('\t');
       const d = days.get(f);
-      if (d) { out[i] += `\t${d || '-'}`; withDays++; }
+      if (d) { out[i] += `\t${d}`; withDays++; }
       else if (route.split('-').some((a) => TW_AIRPORTS.has(a))) { out[i] += '\t-'; noSchedule++; }
     }
   }

@@ -21,21 +21,29 @@ test('建索引：ICAO 呼號轉 IATA 班號、機場轉 IATA、去重、多段�
   assert.deepEqual(stats, { raw: 7, kept: 5, iata: 4, airlines: 5 });
 });
 
-test('TDX 班表：星期取聯集、只算有效期間、班號去前綴與前導 0', () => {
+test('TDX 班表：只看接下來 14 天每天實際有沒有排班；換季兩筆不互相蓋過；班號去前綴與前導 0', () => {
+  // 2026-11-26 是週四。這個月一、四；12/1 起天天飛（12/1～12/9 在 14 天內：二～日都會出現）
   const rows = [
-    { AirlineID: 'BR', FlightNumber: '0071', ScheduleStartDate: '2026-10-25', ScheduleEndDate: '2027-03-27', DepartureAirportID: 'TPE', ArrivalAirportID: 'MUC', Monday: true, Thursday: true },
-    { AirlineID: 'BR', FlightNumber: 'BR71', ScheduleStartDate: '2026-12-01', ScheduleEndDate: '2027-01-10', DepartureAirportID: 'TPE', ArrivalAirportID: 'MUC', Saturday: true },
+    { AirlineID: 'AE', FlightNumber: 'AE1261', ScheduleStartDate: '2026-11-01', ScheduleEndDate: '2026-11-30', Monday: true, Thursday: true },
+    { AirlineID: 'AE', FlightNumber: '1261', ScheduleStartDate: '2026-12-01', ScheduleEndDate: '2027-03-27', Monday: true, Tuesday: true, Wednesday: true, Thursday: true, Friday: true, Saturday: true, Sunday: true },
+    { AirlineID: 'BR', FlightNumber: '0071', ScheduleStartDate: '2026-10-25', ScheduleEndDate: '2027-03-27', Monday: true, Thursday: true },
     { AirlineID: 'BR', FlightNumber: '99', ScheduleStartDate: '2026-01-01', ScheduleEndDate: '2026-03-01', Monday: true },   // 已過期
+    { AirlineID: 'CI', FlightNumber: '5', ScheduleStartDate: '2027-01-01', ScheduleEndDate: '2027-03-01', Monday: true },     // 14 天後才開始
   ];
   const { days } = scheduleDays(rows, '2026-11-26');
-  assert.equal(days.get('BR71'), '146');
-  assert.equal(days.has('BR99'), false);
+  assert.equal(days.get('AE1261'), '1234567');
+  assert.equal(days.get('BR71'), '14');
+  assert.equal(days.get('BR99'), '');
+  assert.equal(days.get('CI5'), '');
+  const { days: late } = scheduleDays(rows.slice(0, 1), '2026-11-26');
+  assert.equal(late.get('AE1261'), '14', '只有這個月那筆：週一、四');
 });
 
 test('合併班表：台灣班號加星期、經過台灣但沒排班標 -、外站不動、班表有 VRS 沒有的補上', () => {
   const schedules = [
     { AirlineID: 'BR', FlightNumber: '71', ScheduleStartDate: '2026-10-25', ScheduleEndDate: '2027-03-27', DepartureAirportID: 'TPE', ArrivalAirportID: 'MUC', Tuesday: true, Saturday: true },
     { AirlineID: 'IT', FlightNumber: '200', ScheduleStartDate: '2026-10-25', ScheduleEndDate: '2027-03-27', DepartureAirportID: 'TPE', ArrivalAirportID: 'NRT', Monday: true, Tuesday: true, Wednesday: true, Thursday: true, Friday: true, Saturday: true, Sunday: true },
+    { AirlineID: 'CI', FlightNumber: '5', ScheduleStartDate: '2026-01-01', ScheduleEndDate: '2026-02-01', Monday: true },   // 班表有、但已過期：當成沒排班
   ];
   const { text, stats } = buildRoutesIndex({ routesCsv, airlinesCsv, airportsCsv, schedules, today: '2026-11-26', generated: '2026-11-26' });
   assert.equal(text.split('\n')[0], '#flights-routes v1 2026-11-26 tdx');
