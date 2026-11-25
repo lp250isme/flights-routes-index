@@ -29,7 +29,35 @@ function rows(text) {
  * airportsCsv：OurAirports（icao_code／gps_code／ident → iata_code）
  * 回傳 { text, stats }：text 是 TSV，第一行版本，A 行航空公司、R 行航班
  */
-export function buildRoutesIndex({ routesCsv, airlinesCsv, airportsCsv, generated = new Date().toISOString().slice(0, 10) }) {
+// 台灣的機場（IATA）：班號經過這些機場、TDX 班表卻沒有＝近期沒排班
+export const TW_AIRPORTS = new Set(['TPE', 'TSA', 'KHH', 'RMQ', 'TNN', 'CYI', 'HUN', 'TTT', 'MZG', 'KNH', 'LZN', 'MFK', 'GNI', 'KYD', 'CMJ', 'WOT', 'HCN', 'PIF']);
+const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/**
+ * TDX 定期航班表（GeneralSchedule International＋Domestic）→ 班號 → 飛的星期（"1246"，1＝週一…7＝週日）。
+ * 只算「今天到 60 天後」有效的班表；同一班號多筆（換季、不同航段）取聯集。
+ */
+export function scheduleDays(schedules, today = new Date().toISOString().slice(0, 10)) {
+  const until = new Date(Date.parse(today) + 60 * 86400e3).toISOString().slice(0, 10);
+  const days = new Map(), routes = new Map();
+  for (const s of schedules || []) {
+    const air = String(s.AirlineID || '').toUpperCase().trim();
+    let num = String(s.FlightNumber || '').toUpperCase().trim();
+    if (num.startsWith(air)) num = num.slice(air.length);
+    if (!air || !num) continue;
+    const start = String(s.ScheduleStartDate || '').slice(0, 10), end = String(s.ScheduleEndDate || '9999').slice(0, 10);
+    if (end < today || (start && start > until)) continue;
+    const flight = air + num.replace(/^0+(?=\d)/, '');
+    const set = days.get(flight) || new Set();
+    WEEK.forEach((d, i) => { if (s[d] === true || s[d] === 'true' || s[d] === 1) set.add(i + 1); });
+    days.set(flight, set);
+    const dep = String(s.DepartureAirportID || '').toUpperCase(), arr = String(s.ArrivalAirportID || '').toUpperCase();
+    if (dep && arr && !routes.has(flight)) routes.set(flight, `${dep}-${arr}`);
+  }
+  return { days: new Map([...days].map(([k, v]) => [k, [...v].sort().join('')])), routes };
+}
+
+export function buildRoutesIndex({ routesCsv, airlinesCsv, airportsCsv, schedules = null, today, generated = new Date().toISOString().slice(0, 10) }) {
   const icaoToIata = new Map();     // 航空公司
   const airlineName = new Map();
   for (const a of rows(airlinesCsv)) {
@@ -65,9 +93,22 @@ export function buildRoutesIndex({ routesCsv, airlinesCsv, airportsCsv, generate
     usedAirlines.add(code);
     out.push(key);
   }
+  // TDX 班表：台灣的班號加第三欄「飛的星期」；經過台灣卻不在班表的標 "-"（近期沒排班）；班表有、VRS 沒有的補進去
+  let withDays = 0, noSchedule = 0, added = 0;
+  if (schedules) {
+    const { days, routes } = scheduleDays(schedules, today || generated);
+    const flights = new Set(out.map((l) => l.split('\t')[0]));
+    for (const [f, r] of routes) if (!flights.has(f)) { out.push(`${f}\t${r}`); added++; }
+    for (let i = 0; i < out.length; i++) {
+      const [f, route] = out[i].split('\t');
+      const d = days.get(f);
+      if (d) { out[i] += `\t${d || '-'}`; withDays++; }
+      else if (route.split('-').some((a) => TW_AIRPORTS.has(a))) { out[i] += '\t-'; noSchedule++; }
+    }
+  }
   out.sort();
   const airlines = [...usedAirlines].sort().map((c) => `A\t${c}\t${icaoToIata.get(c) || ''}\t${(airlineName.get(c) || '').replace(/\t/g, ' ')}`);
-  const text = [`#flights-routes v1 ${generated}`, ...airlines, ...out.map((l) => 'R\t' + l)].join('\n') + '\n';
-  return { text, stats: { raw, kept: out.length, iata: iataCount, airlines: airlines.length } };
+  const text = [`#flights-routes v1 ${generated}${schedules ? ' tdx' : ''}`, ...airlines, ...out.map((l) => 'R\t' + l)].join('\n') + '\n';
+  return { text, stats: { raw, kept: out.length, iata: iataCount, airlines: airlines.length, ...(schedules ? { withDays, noSchedule, added } : {}) } };
 }
 

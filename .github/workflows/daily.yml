@@ -1,5 +1,6 @@
 # Daily: build the index and upload it to Cloudflare R2 (shortlink-files/fl/routes-index.tsv.gz).
 # 每天建一次索引並上傳 R2。需要 repo secret CLOUDFLARE_API_TOKEN（R2 寫入）；沒設就只建不傳。
+# 選用 TDX_CLIENT_ID／TDX_CLIENT_SECRET：台灣班號標出飛哪幾天（TDX 定期航班表）。
 name: daily
 on:
   schedule:
@@ -12,7 +13,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - run: node --test
       - run: node build.mjs routes-index.tsv.gz
+        env:
+          TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
+          TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
       - name: upload to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
