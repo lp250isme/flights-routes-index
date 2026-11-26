@@ -6,12 +6,16 @@ on:
   schedule:
     - cron: '17 */3 * * *'   # 每 3 小時：VRS、TDX 有變才上傳
   workflow_dispatch:
+permissions:
+  contents: read
+  actions: write   # keepalive 重新啟用排程用
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22 }
       - run: node --test
       - id: build
@@ -24,4 +28,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         if: env.CLOUDFLARE_API_TOKEN != '' && steps.build.outputs.changed == 'true'
-        run: npx -y wrangler@4 r2 object put shortlink-files/fl/routes-index.tsv.gz --file routes-index.tsv.gz --content-type application/gzip --remote
+        run: npx -y wrangler@4.168.0 r2 object put shortlink-files/fl/routes-index.tsv.gz --file routes-index.tsv.gz --content-type application/gzip --remote
+      # 公開 repo 60 天沒 commit，GitHub 會停掉排程；每次跑完重新啟用一次重設計時（不用假 commit）。
+      - name: keepalive
+        if: always()
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh api -X PUT repos/${{ github.repository }}/actions/workflows/daily.yml/enable
