@@ -8,7 +8,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: write   # keepalive 重新啟用排程用
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,8 +28,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         if: env.CLOUDFLARE_API_TOKEN != '' && steps.build.outputs.changed == 'true'
         run: npx -y wrangler@4.168.0 r2 object put shortlink-files/fl/routes-index.tsv.gz --file routes-index.tsv.gz --content-type application/gzip --remote
-      # 公開 repo 60 天沒 commit，GitHub 會停掉排程；每次跑完重新啟用一次重設計時（不用假 commit）。
-      - name: keepalive
-        if: always()
-        env: { GH_TOKEN: '${{ github.token }}' }
+  # 公開 repo 60 天沒 commit，GitHub 會停掉排程；每次跑完重新啟用一次重設計時（不用假 commit）。
+  # 獨立成一個 job：只有這裡拿 actions: write，帶 Cloudflare token 的 build 拿不到。
+  keepalive:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env: { GH_TOKEN: '${{ github.token }}' }
         run: gh api -X PUT repos/${{ github.repository }}/actions/workflows/daily.yml/enable
